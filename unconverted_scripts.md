@@ -14,7 +14,7 @@ Scripts
 │ │ ├── TCGA_compareHRDclassifiers.R
 │ │ └── TCGA_HRDclassification_thresholds.R
 │ └── ICGC_PhenotypeClusteringAndSimulationAnalysis
-│ ├── Likelihood_Cluster_Generation.R
+│ ├── Likelihood_Cluster_Generation.R (done)
 │ ├── ICGC_deconstructSigs_genome2exome.R (done)
 │ ├── ICGC_BRCA_sigProfilerContributions.R (done)
 │ ├── ICGC_simulations_indelProportions.R (done)
@@ -22,20 +22,20 @@ Scripts
 │ ├── ICGC_simulations_indelLikelihoodAlterations.R (done)
 │ ├── ICGC_simulations_clusterReassignment.R (done)
 │ ├── ICGC_PhenotypeClusterDevelopment_normalised.R (done)
-│ └── ICGC_indelCounts_ExomeVsGenome.R
+│ └── ICGC_indelCounts_ExomeVsGenome.R (done)
 ├── TCGA_HRDclassificationHeatmap.jpg
 ├── README.md
 └── TranscriptionalSignature
 ├── TranscriptionalSignatureDevelopment
-│ ├── RNAseqTransformationScript.R
-│ ├── MultinomialWEN_alpha0.25_1to250.R
-│ ├── ReduxSig_adjacencyMatrixFormation.R
-│ ├── BayesPrism_TumorPurityComparison.R
-│ ├── CollateAlternativeSignatures.R
-│ ├── Qian2020_signatureDropOuts.R
-│ ├── CentroidModelFormation.R
-│ ├── MultinomialElasticNet_alpha0.25_1to100.R
-│ └── TCGA_BRCA.RNASeq_prep.R
+│ ├── RNAseqTransformationScript.R (done)
+│ ├── MultinomialWEN_alpha0.25_1to250.R (done)
+│ ├── ReduxSig_adjacencyMatrixFormation.R (done)
+│ ├── BayesPrism_TumorPurityComparison.R (done)
+│ ├── CollateAlternativeSignatures.R (done)
+│ ├── Qian2020_signatureDropOuts.R (done)
+│ ├── CentroidModelFormation.R (done)
+│ ├── MultinomialElasticNet_alpha0.25_1to100.R (done)
+│ └── TCGA_BRCA.RNASeq_prep.R (done)
 ├── SingleCellAnalysis
 │ ├── Bassez2021_preprocessing.R
 │ ├── Qian2020_jointComparison.R
@@ -48,12 +48,12 @@ Scripts
 │ ├── cpdb_interactionCounts.R
 │ └── cpdb_individualInteractions.R
 └── SignatureValidation
-├── ISPY2_HRDscoring.R
-├── CCLE_jointComparisons.R
-├── GSEA_enrichR.R
-├── TCGA_HRDscoreByERstatus.R
-├── GSEA_pathfindR.R
-├── TCGA_testScoring.R
+├── ISPY2_HRDscoring.R (done)
+├── CCLE_jointComparisons.R (done)
+├── GSEA_enrichR.R (done)
+├── TCGA_HRDscoreByERstatus.R (done)
+├── GSEA_pathfindR.R (done)
+├── TCGA_testScoring.R (done)
 ├── SMC_validation.R
 ├── SMC_signatureComparisons.R
 ├── TCGA_trainHeatmap.R
