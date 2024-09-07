@@ -8,8 +8,7 @@ import maftools  # Assuming a Python equivalent exists; if not, we'll need to im
 import sigminer  # Assuming a Python equivalent exists; if not, we'll need to implement custom functions
 from typing import Dict, List, Tuple
 
-# Set working directory
-# In Python, we typically don't change the working directory. Instead, we'll use full paths.
+#
 
 # Load libraries
 # Most libraries are imported at the top. We'll import others as needed.
