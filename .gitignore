@@ -4,4 +4,5 @@ unconverted_scripts.md
 
 # Ignore all files in the prelim_analysis/data directory
 prelim_analysis/data/*
-!prelim_analysis/data/.gitkeep
+!prelim_analysis/data/.gitkeepdata/
+data/*
