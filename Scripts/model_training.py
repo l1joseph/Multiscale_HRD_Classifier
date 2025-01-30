@@ -174,25 +174,23 @@ random_params = list(ParameterSampler(param_distributions, n_iter=n_iter, random
 def get_variable_name(var):
     conv = {deconvo:'deconvo', tpm:'tpm', fpkm:'fpkm'}
     return conv[var]
+from joblib import Parallel, delayed
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import ElasticNet
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+import numpy as np
+import pandas as pd
+import joblib
+import matplotlib.pyplot as plt
 
-for iteration, params in enumerate(random_params):
-    # print(params)
-
-    print({k: (v.index.name if k == 'rna-seq' else v) for k, v in params.items()})
-    
-    # Split data into training and test sets and get intersecting indices
+def train_model(params, metadata, best_metrics):
     features_df = params['rna-seq']
-
     metadata_truncated = metadata.loc[metadata.index.intersection(features_df.index)]
-    # features_df = features_df.loc[features_df.index.intersection(metadata_truncated.index)]
-
-    labels_df = metadata_truncated['HRD-sum']
-    labels_df = labels_df.sort_index()
+    
+    labels_df = metadata_truncated['HRD-sum'].sort_index()
     features_df = features_df.sort_index()
     
-    debug_features = features_df.copy()
-    debug_labels = labels_df.copy()
-
     if params['normalization'] == 'StandardScaler':
         scaler = StandardScaler()
         features_df = pd.DataFrame(scaler.fit_transform(features_df), index=features_df.index, columns=features_df.columns)
@@ -205,57 +203,65 @@ for iteration, params in enumerate(random_params):
     elif params['softlabels'] == "Binary":
         labels_df = binary_hrd(labels_df, params['softlabel_thresholds'])
 
-
     # Downsample LumA samples
+    removed_samples = None
     if params['downsample'][0]:
         df_downsampled, removed_samples = downsampling_lumA(metadata_truncated, params['downsample_thresholds'])
         features_df = features_df.loc[features_df.index.intersection(df_downsampled.index)]
         labels_df = df_downsampled.loc[df_downsampled.index.intersection(features_df.index), 'HRD-sum']
+    
     labels = labels_df.squeeze()
 
-    #TEST TRAIN SPLIT
+    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(features_df, labels, test_size=0.2, random_state=42)
     
-    if params['downsample'][1]:
-        X_test,y_test = add_back_test(features_df, removed_samples, X_test, y_test)
-        
-    
+    if params['downsample'][1] and removed_samples is not None:
+        X_test, y_test = add_back_test(features_df, removed_samples, X_test, y_test)
+
+    # Train model
     model = ElasticNet(alpha=params['alpha'], l1_ratio=params['l1_ratio'], max_iter=1000, random_state=42)
     model.fit(X_train, y_train)
-    
-    # Predict on test set
+
+    # Evaluate model
     y_pred = model.predict(X_test)
     mse = mean_squared_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
-    
-    # Update best model if current is better
-    # if mse < best_metrics['Mean Squared Error']:
+
+    return mse, r2, model, params, X_train, X_test, y_test, y_pred
+
+
+# Parallel execution
+num_cores = -1  # Use all available cores
+results = Parallel(n_jobs=num_cores)(
+    delayed(train_model)(params, metadata, {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}) for params in random_params
+)
+
+# Extract best model
+best_metrics = {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}
+best_model = None
+best_params = None
+best_X_train, best_X_test, best_y_test, best_y_pred = None, None, None, None
+
+for mse, r2, model, params, X_train, X_test, y_test, y_pred in results:
     if mse < best_metrics['Mean Squared Error'] or (mse == best_metrics['Mean Squared Error'] and r2 > best_metrics['R^2 Score']):
         best_model = model
         best_metrics = {'Mean Squared Error': mse, 'R^2 Score': r2}
         best_params = params
-        best_X_train = X_train
-        best_X_test = X_test
-    if iteration % 3 == 0:
-        joblib.dump(best_model, 'model.joblib')
+        best_X_train, best_X_test, best_y_test, best_y_pred = X_train, X_test, y_test, y_pred
 
-# Scatter plot of predictions vs actual values for the best model
-y_pred_best = best_model.predict(X_test)
+# Save best model
+joblib.dump(best_model, 'model.joblib')
+
+# Plot results
 plt.figure(figsize=(8, 6))
-plt.scatter(y_test, y_pred_best, alpha=0.6, label='Predicted vs Actual')
-plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'k--', label='Ideal Prediction')
+plt.scatter(best_y_test, best_y_pred, alpha=0.6, label='Predicted vs Actual')
+plt.plot([min(best_y_test), max(best_y_test)], [min(best_y_test), max(best_y_test)], 'k--', label='Ideal Prediction')
 plt.xlabel('Actual Values')
 plt.ylabel('Predicted Values')
 plt.title('Elastic Net Regression: Predicted vs Actual (Best Model)')
 plt.legend(loc="upper left")
-plt.show()
-plot_test_train_pam50_dist(metadata, best_X_train, best_X_test)
+plt.savefig("plot_output.png")
+
 print(f"Best Parameters: {best_params}")
 print(f"Mean Squared Error: {best_metrics['Mean Squared Error']:.3f}")
 print(f"R^2 Score: {best_metrics['R^2 Score']:.3f}")
-
-# return best_model, best_metrics, best_params
-elastic_model = best_model
-metrics = best_metrics
-params = best_params
-joblib.dump(best_model, 'model.joblib')
