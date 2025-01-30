@@ -10,6 +10,9 @@ from sklearn.model_selection import ParameterGrid, train_test_split
 from scipy.stats import pearsonr
 from sklearn.model_selection import ParameterSampler
 import joblib
+import warnings
+warnings.filterwarnings("ignore")
+
 
 # metadata
 ann_tcga = pd.read_csv('../data/toga.breast.brca.status.txt', sep='\t', index_col=0)
@@ -90,13 +93,13 @@ def downsampling_lumA(metadata, lumA_cutoff):
     lumA_HRP = metadata[(metadata['event.PAM50'] == 'LumA') & (metadata['HRD-sum'] < lumA_cutoff)]
     # print(lumA_HRP.shape, lumA_HRD.shape)
     if lumA_HRP.shape[0] < lumA_HRD.shape[0]:
-        print(f"Not enough HRP samples ({lumA_HRP.shape[0]}) to match HRD count ({lumA_HRD.shape[0]}). Skipping downsampling.")
+        # print(f"Not enough HRP samples ({lumA_HRP.shape[0]}) to match HRD count ({lumA_HRD.shape[0]}). Skipping downsampling.")
         return metadata, pd.DataFrame()
     lumA_HRP_downsampled = lumA_HRP.sample(n=lumA_HRD.shape[0], random_state=42)
     df_downsampled = pd.concat([lumA_HRD, lumA_HRP_downsampled])
     df_downsampled = pd.concat([df_downsampled, metadata[metadata['event.PAM50'] != 'LumA']])
     # print(df_downsampled['event.PAM50'].value_counts())
-    print(f"number of samples left: {df_downsampled.shape}")
+    # print(f"number of samples left: {df_downsampled.shape}")
     unused_majority = lumA_HRP.loc[~lumA_HRP.index.isin(lumA_HRP_downsampled.index)]
     return df_downsampled, unused_majority
 
@@ -149,9 +152,14 @@ downsample = [(True, False),(True,False), (False,False)]
 downsample_thresholds = [x for x in range(10, 80, 5)]
 softlabels = ["None", "Sigmoid", "Binary"]
 softlabel_thresholds = [x for x in range(10, 80, 5)]
-softlabel_gradients = np.arange(0, 1, 0.1)
+softlabel_gradients = np.arange(0.1, 1, 0.1)
 normalization = ['StandardScaler','log2','None']
 
+# Custom variables
+# rna_seqs = [tpm]
+# downsample = [(True, False)]
+# softlabels = ["Sigmoid"]
+# normalization = ['StandardScaler']
 
 
 best_model = None
@@ -166,7 +174,7 @@ param_distributions = {'alpha': alphas, 'l1_ratio': l1_ratios,
                             'normalization': normalization}
 
 
-n_iter = 3000  # You can adjust this value based on your computational resources
+n_iter = 500  # You can adjust this value based on your computational resources
 
 # Generate random combinations of parameters
 random_params = list(ParameterSampler(param_distributions, n_iter=n_iter, random_state=42))
@@ -219,6 +227,7 @@ def train_model(params, metadata, best_metrics):
         X_test, y_test = add_back_test(features_df, removed_samples, X_test, y_test)
 
     # Train model
+    warnings.filterwarnings("ignore")
     model = ElasticNet(alpha=params['alpha'], l1_ratio=params['l1_ratio'], max_iter=1000, random_state=42)
     model.fit(X_train, y_train)
 
@@ -229,28 +238,37 @@ def train_model(params, metadata, best_metrics):
 
     return mse, r2, model, params, X_train, X_test, y_test, y_pred
 
-
-# Parallel execution
+batch_size = 50
 num_cores = -1  # Use all available cores
-results = Parallel(n_jobs=num_cores)(
-    delayed(train_model)(params, metadata, {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}) for params in random_params
-)
 
-# Extract best model
+# Generate random combinations of parameters
+# random_params = list(ParameterSampler(param_distributions, n_iter=n_iter, random_state=42))
+
+# Initialize best model tracking
 best_metrics = {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}
 best_model = None
 best_params = None
 best_X_train, best_X_test, best_y_test, best_y_pred = None, None, None, None
 
-for mse, r2, model, params, X_train, X_test, y_test, y_pred in results:
-    if mse < best_metrics['Mean Squared Error'] or (mse == best_metrics['Mean Squared Error'] and r2 > best_metrics['R^2 Score']):
-        best_model = model
-        best_metrics = {'Mean Squared Error': mse, 'R^2 Score': r2}
-        best_params = params
-        best_X_train, best_X_test, best_y_test, best_y_pred = X_train, X_test, y_test, y_pred
-
+# Process in batches
+for i in range(0, n_iter, batch_size):
+    batch_params = random_params[i:i + batch_size]
+    
+    results = Parallel(n_jobs=num_cores)(
+        delayed(train_model)(params, metadata, {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')})
+        for params in batch_params
+    )
+    # Update best model if found
+    for mse, r2, model, params, X_train, X_test, y_test, y_pred in results:
+        if mse < best_metrics['Mean Squared Error'] or (mse == best_metrics['Mean Squared Error'] and r2 > best_metrics['R^2 Score']):
+            best_model = model
+            best_metrics = {'Mean Squared Error': mse, 'R^2 Score': r2}
+            best_params = params
+            # best_X_train, best_X_test, best_y_test, best_y_pred = X_train, X_test, y_test, y_pred
+    print(i,best_metrics)
+    print({k: (v.index.name if k == 'rna-seq' else v) for k, v in best_params.items()})
 # Save best model
-joblib.dump(best_model, 'model.joblib')
+joblib.dump(best_model, 'best_model.joblib')
 
 # Plot results
 plt.figure(figsize=(8, 6))
@@ -262,6 +280,7 @@ plt.title('Elastic Net Regression: Predicted vs Actual (Best Model)')
 plt.legend(loc="upper left")
 plt.savefig("plot_output.png")
 
-print(f"Best Parameters: {best_params}")
+print(f"Best Parameters: ")
+print({k: (v.index.name if k == 'rna-seq' else v) for k, v in best_params.items()})
 print(f"Mean Squared Error: {best_metrics['Mean Squared Error']:.3f}")
 print(f"R^2 Score: {best_metrics['R^2 Score']:.3f}")
