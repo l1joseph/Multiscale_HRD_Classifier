@@ -1,26 +1,22 @@
 import pandas as pd
+from joblib import Parallel, delayed
+import numpy as np
+import pandas as pd
+import joblib
+import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.linear_model import LinearRegression, LogisticRegression, ElasticNet, LogisticRegressionCV
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, RandomForestRegressor, GradientBoostingRegressor
-from sklearn.metrics import roc_curve, auc, confusion_matrix, classification_report, mean_squared_error, r2_score
-from sklearn.model_selection import ParameterGrid, train_test_split
-from scipy.stats import pearsonr
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
+from sklearn.preprocessing import StandardScaler 
+from sklearn.linear_model import ElasticNet
+from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 from sklearn.model_selection import ParameterSampler
 import joblib
 import warnings
-from joblib import Parallel, delayed
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import ElasticNet
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
-import joblib
-
-
 warnings.filterwarnings("ignore")
-
 
 # metadata
 ann_tcga = pd.read_csv('../data/toga.breast.brca.status.txt', sep='\t', index_col=0)
@@ -150,35 +146,97 @@ def plot_test_train_pam50_dist(metadata, X_train, X_test):
     # print(pam50_counts)
     # print(df_downsampled.shape)
 # plot_test_train_pam50_dist(metadata, X_train, X_test)
+def runDESeq2(counts, metadata, design_factors):
+    # Make gene names unique before creating DESeqDataSet
+    counts = counts.copy()
+    counts.columns = pd.Index(counts.columns).str.split('_').str[0] + '_' + pd.Series(range(len(counts.columns))).astype(str)
+    
+    # Create the DESeqDataSet object
+    dds = DeseqDataSet(
+        counts=counts,
+        metadata=metadata,
+        design_factors=design_factors,
+    )
+    
+    # Run the differential expression analysis
+    dds.deseq2()
+    
+    # Get the results
+    stats = DeseqStats(dds)
+    stats.summary()
+    results = stats.results_df
+    
+    return results
 
+# cast expression to int
+#gene_expression_int
+# First, let's do a comprehensive data check
+def check_deseq2_data(counts_df, metadata_df, design_factor):
+    common_indices = counts_df.index.intersection(metadata_df.index)    
+    return common_indices
+def prepare_deseq2_data(counts_df, metadata_df, common_indices):
+    # Subset both dataframes to common indices
+    counts_aligned = counts_df.loc[common_indices]
+    metadata_aligned = metadata_df.loc[common_indices]
+    
+    # Verify alignment
+    assert counts_aligned.index.equals(metadata_aligned.index), "Indices not aligned"
+    assert counts_aligned.index.is_unique, "Duplicate indices present"
+    
+    return counts_aligned, metadata_aligned
 
+features_df = tpm
+
+metadata_truncated = metadata.loc[metadata.index.intersection(features_df.index)]
+
+metadata_truncated['HRD_status_base'] = metadata_truncated['HRD-sum'].apply(lambda x: 'HRD' if x >= 42 else 'HR')
+
+softLabel_metadata = metadata_truncated.sort_index()
+features_df = features_df.fillna(0).astype(int)
+
+gene_expression_int = features_df.sort_index()
+common_idx = check_deseq2_data(gene_expression_int, softLabel_metadata, 'HRD_status_base')
+# Prepare the data ensuring perfect alignment
+
+# Prepare aligned data
+gene_expression_aligned, softLabel_metadata_aligned = prepare_deseq2_data(
+    gene_expression_int, 
+    softLabel_metadata,
+    common_idx
+)
+
+basic = runDESeq2(gene_expression_aligned, softLabel_metadata_aligned, 'HRD_status_base')
 
 alphas = [0.01, 0.1, 0.25, 0.5, 1.0]
 l1_ratios = [0.1, 0.5, 0.7, 0.9]
-rna_seqs = [deconvo, tpm, fpkm]
 downsample = [(True, False),(True,False), (False,False)]
 downsample_thresholds = [x for x in range(10, 80, 5)]
 softlabels = ["None", "Sigmoid", "Binary"]
 softlabel_thresholds = [x for x in range(10, 80, 5)]
-softlabel_gradients = np.arange(0, 1, 0.1)
+softlabel_gradients = np.arange(0.1, 1, 0.1)
 normalization = ['StandardScaler','log2','None']
+pvals = np.arange(0.01, 0.15, 0.1)
+
+# Custom variables
+# rna_seqs = [tpm]
+# downsample = [(True, False)]
+# softlabels = ["Sigmoid"]
+# normalization = ['StandardScaler']
 
 
-
-
-model = None
-metrics = {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}
-params = {}
+best_model = None
+best_metrics = {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}
+best_params = {}
 
 # Grid search
 param_distributions = {'alpha': alphas, 'l1_ratio': l1_ratios,
-                            'rna-seq': rna_seqs, 'downsample': downsample,
+                            'downsample': downsample,
                             'downsample_thresholds': downsample_thresholds,'softlabels': softlabels,
                             'softlabel_thresholds': softlabel_thresholds, 'softlabel_gradients': softlabel_gradients,
-                            'normalization': normalization}
+                            'normalization': normalization, 'pvals': pvals}
 
 
-n_iter = 500  # You can adjust this value based on your computational resources
+n_iter = 5000  # You can adjust this value based on your computational resources
 
 # Generate random combinations of parameters
 random_params = list(ParameterSampler(param_distributions, n_iter=n_iter, random_state=42))
@@ -187,10 +245,14 @@ def get_variable_name(var):
     conv = {deconvo:'deconvo', tpm:'tpm', fpkm:'fpkm'}
     return conv[var]
 
-def train_model(params, metadata):
-    features_df = params['rna-seq']
-    metadata_truncated = metadata.loc[metadata.index.intersection(features_df.index)]
-    
+def train_model(params, metadata, best_metrics):
+    # basic_filt = basic[(basic["padj"] <= params['pvals']) & (basic["log2FoldChange"] >= 2 | basic["log2FoldChange"] <= -2)]
+    basic_filt = basic[(basic["padj"] <= params['pvals']) & ((basic["log2FoldChange"] >= 2) | (basic["log2FoldChange"] <= -2))]
+
+
+    de_genes = [gene.split('_')[0] for gene in basic_filt.index]
+
+    features_df = gene_expression_int.loc[:, gene_expression_int.columns.isin(de_genes)]
     labels_df = metadata_truncated['HRD-sum'].sort_index()
     features_df = features_df.sort_index()
     
@@ -233,95 +295,51 @@ def train_model(params, metadata):
 
     return mse, r2, model, params, X_train, X_test, y_test, y_pred
 
+batch_size = 500
+num_cores = -1  # Use all available cores
 
-param = {'alpha': 1.0, 'l1_ratio': 0.1,
-                            'rna-seq': tpm, 'downsample': (False, False),
-                            'downsample_thresholds': 60,'softlabels': 'Sigmoid',
-                            'softlabel_thresholds': 70, 'softlabel_gradients': 0.0,
-                            'normalization': 'None'}
-mse, r2, model, params, X_train, X_test, y_test, y_pred = train_model(param, metadata)
+# Generate random combinations of parameters
+# random_params = list(ParameterSampler(param_distributions, n_iter=n_iter, random_state=42))
+
+# Initialize best model tracking
+best_metrics = {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')}
+best_model = None
+best_params = None
+best_X_train, best_X_test, best_y_test, best_y_pred = None, None, None, None
+
+# Process in batches
+for i in range(0, n_iter, batch_size):
+    batch_params = random_params[i:i + batch_size]
+    
+    results = Parallel(n_jobs=num_cores)(
+        delayed(train_model)(params, metadata, {'Mean Squared Error': float('inf'), 'R^2 Score': -float('inf')})
+        for params in batch_params
+    )
+    # Update best model if found
+    for mse, r2, model, params, X_train, X_test, y_test, y_pred in results:
+        # if mse < best_metrics['Mean Squared Error'] or (mse == best_metrics['Mean Squared Error'] and r2 > best_metrics['R^2 Score']):
+        if (mse < best_metrics['Mean Squared Error'] * 2 or mse < 1) and r2 > best_metrics['R^2 Score']:
+            best_model = model
+            best_metrics = {'Mean Squared Error': mse, 'R^2 Score': r2}
+            best_params = params
+            # best_X_train, best_X_test, best_y_test, best_y_pred = X_train, X_test, y_test, y_pred
+    print(i,best_metrics)
+    print({k: (v.index.name if k == 'rna-seq' else v) for k, v in best_params.items()})
+# Save best model
+joblib.dump(best_model, 'best_model.joblib')
 
 # Plot results
-plt.figure(figsize=(8, 6))
-plt.scatter(y_test, y_pred, alpha=0.6, label='Predicted vs Actual')
-plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], 'k--', label='Ideal Prediction')
-plt.xlabel('Actual Values')
-plt.ylabel('Predicted Values')
-plt.title('Elastic Net Regression: Predicted vs Actual (Best Model)')
-plt.legend(loc="upper left")
-plt.savefig("plot_output.png")
+# plt.figure(figsize=(8, 6))
+# plt.scatter(best_y_test, best_y_pred, alpha=0.6, label='Predicted vs Actual')
+# plt.plot([min(best_y_test), max(best_y_test)], [min(best_y_test), max(best_y_test)], 'k--', label='Ideal Prediction')
+# plt.xlabel('Actual Values')
+# plt.ylabel('Predicted Values')
+# plt.title('Elastic Net Regression: Predicted vs Actual (Best Model)')
+# plt.legend(loc="upper left")
+# plt.savefig("plot_output.png")
 
-print(f"Best Parameters: {params}")
-print(f"Mean Squared Error: {metrics['Mean Squared Error']:.3f}")
-print(f"R^2 Score: {metrics['R^2 Score']:.3f}")
+# print(f"Best Parameters: ")
+# print({k: (v.index.name if k == 'rna-seq' else v) for k, v in best_params.items()})
+print(f"Mean Squared Error: {best_metrics['Mean Squared Error']:.3f}")
+print(f"R^2 Score: {best_metrics['R^2 Score']:.3f}")
 
-
-
-
-from pydeseq2.dds import DeseqDataSet
-from pydeseq2.ds import DeseqStats
-import matplotlib.pyplot as plt
-import seaborn as sns
-import decoupler as dc
-import plotly.express as px
-
-def runDESeq2(counts, metadata, design_factors):
-    # Make gene names unique before creating DESeqDataSet
-    counts = counts.copy()
-    counts.columns = pd.Index(counts.columns).str.split('_').str[0] + '_' + pd.Series(range(len(counts.columns))).astype(str)
-    
-    # Create the DESeqDataSet object
-    dds = DeseqDataSet(
-        counts=counts,
-        metadata=metadata,
-        design_factors=design_factors,
-    )
-    
-    # Run the differential expression analysis
-    dds.deseq2()
-    
-    # Get the results
-    stats = DeseqStats(dds)
-    stats.summary()
-    results = stats.results_df
-    
-    return results
-
-# cast expression to int
-#gene_expression_int
-# First, let's do a comprehensive data check
-def check_deseq2_data(counts_df, metadata_df, design_factor):
-    common_indices = counts_df.index.intersection(metadata_df.index)    
-    return common_indices
-def prepare_deseq2_data(counts_df, metadata_df, common_indices):
-    # Subset both dataframes to common indices
-    counts_aligned = counts_df.loc[common_indices]
-    metadata_aligned = metadata_df.loc[common_indices]
-    
-    # Verify alignment
-    assert counts_aligned.index.equals(metadata_aligned.index), "Indices not aligned"
-    assert counts_aligned.index.is_unique, "Duplicate indices present"
-    
-    return counts_aligned, metadata_aligned
-
-gene_expression_int = params['rna-seq'].iloc[:,2:].round().astype(int)
-softLabel_metadata = metadata_truncated.sort_index()
-gene_expression_int = gene_expression_int.sort_index()
-common_idx = check_deseq2_data(gene_expression_int, softLabel_metadata, 'HRD_status_base')
-# Prepare the data ensuring perfect alignment
-
-# Prepare aligned data
-gene_expression_aligned, softLabel_metadata_aligned = prepare_deseq2_data(
-    gene_expression_int, 
-    softLabel_metadata,
-    common_idx
-)
-
-basic = runDESeq2(gene_expression_aligned, softLabel_metadata_aligned, 'HRD_status_base')
-
-basic_filt = basic[(basic["padj"] <= params['pval']) & (basic["log2FoldChange"] >= 2 | basic["log2FoldChange"] <= -2)]
-
-de_genes = [gene.split('_')[0] for gene in basic_filt.index]
-len(de_genes)
-
-common_de_genes = gene_expression_int.loc[:, gene_expression_int.columns.isin(de_genes)]
