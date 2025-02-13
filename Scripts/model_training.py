@@ -48,6 +48,10 @@ tpm = tpm[~tpm.index.duplicated(keep='first')]
 # Keeps only Primary Tumor
 tpm = tpm.loc[tpm.index.str[13:15] == "01"]
 
+
+filtered_columns = [col for col in fpkm.columns if '|' in col and 'protein_coding' in col.split('|')[2]]
+fpkm = fpkm[filtered_columns]
+
 # deconvo = deconvo.sort_index()
 # deconvo = np.log2(deconvo + 1)
 fpkm.columns = [col.split('|')[1] if '|' in col else col for col in fpkm.columns]
@@ -57,6 +61,7 @@ fpkm.sort_index(inplace=True)
 fpkm = fpkm.rename_axis("fpkm", axis="index")
 fpkm = fpkm.apply(pd.to_numeric, errors='coerce')
 fpkm.fillna(0, inplace=True)
+
 
 deconvo.index = deconvo.index.map(lambda x: x[:12])
 deconvo = deconvo.loc[deconvo.index.intersection(metadata.index)]
@@ -70,7 +75,7 @@ tpm.sort_index(inplace=True)
 tpm = tpm.rename_axis("tpm", axis="index")
 tpm = tpm.apply(pd.to_numeric, errors='coerce')
 tpm.fillna(0, inplace=True)
-
+tpm = tpm[tpm.columns.intersection(fpkm.columns)]
 
 
 print(f"fpkm shape{fpkm.shape}")
@@ -192,12 +197,25 @@ import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
 
+
+
+features_df = tpm
+metadata_truncated = metadata.loc[metadata.index.intersection(features_df.index)]
+
+labels_df = metadata_truncated['HRD-sum'].sort_index()
+features_df = features_df.sort_index()
+
+
+
+
 def train_model(params, metadata, best_metrics):
-    features_df = params['rna-seq']
-    metadata_truncated = metadata.loc[metadata.index.intersection(features_df.index)]
+    global features_df
+    global labels_df
+    # features_df = params['rna-seq']
+    # metadata_truncated = metadata.loc[metadata.index.intersection(features_df.index)]
     
-    labels_df = metadata_truncated['HRD-sum'].sort_index()
-    features_df = features_df.sort_index()
+    # labels_df = metadata_truncated['HRD-sum'].sort_index()
+    # features_df = features_df.sort_index()
     
     if params['normalization'] == 'StandardScaler':
         scaler = StandardScaler()
@@ -260,7 +278,8 @@ for i in range(0, n_iter, batch_size):
     )
     # Update best model if found
     for mse, r2, model, params, X_train, X_test, y_test, y_pred in results:
-        if mse < best_metrics['Mean Squared Error'] or (mse == best_metrics['Mean Squared Error'] and r2 > best_metrics['R^2 Score']):
+        # if mse < best_metrics['Mean Squared Error'] or (mse == best_metrics['Mean Squared Error'] and r2 > best_metrics['R^2 Score']):
+
             best_model = model
             best_metrics = {'Mean Squared Error': mse, 'R^2 Score': r2}
             best_params = params
