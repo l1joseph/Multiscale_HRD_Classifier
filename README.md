@@ -1,26 +1,14 @@
-# Multiscale_HRD_Classifier
+### Leveraging transcriptomic profiles and deep learning to detect homologous recombination deficiency in breast cancer with ***softHRD***
 
-Abstract:
-Breast cancers are characterized by mutations in BRCA1/2 genes that are involved in
-maintaining genomic stability. BRCA deficient cells are known to harbor Homologous
-Recombination Deficiency (HRD), which is a dysregulation of a double stranded DNA repair
-pathway called Homologous Recombination (HR). Patients harboring HRD are sensitive to
-PARP inhibition and chemo therapies. Recent literature has shown that specific subsets of
-biomarkers characterize HRD breast cancer patients. Using 857 breast cancer patients from The
-Cancer Genome Atlas (TCGA) we trained softHRD, a machine learning approach for detecting
-HRD in breast cancer via a transcriptional signature. By validating our model on PARPi clinical
-trials, we are able to demonstrate the utility of our model at not only predicting the HRD status
-of breast cancer patients, but also the ability to provide a clinically relevant transcriptional
-signature of genomic instability.
+## Main:
+  The homologous recombination (HR) pathway is the canonical repair mechanism by which cells repair DNA double-strand breaks. Defects in this pathway, known as homologous recombination deficiency (HRD), can lead to genomic instability and are observed in approximately 13% of breast cancers. HRD is often driven by somatic or germline mutations in BRCA1/2, which render tumors sensitive to PARP inhibitors and platinum-based therapies through synthetic lethality. However, many HRD-positive cancers lack BRCA1/2 mutations, underscoring the need for more reliable approaches to identify tumors likely to benefit from these treatments.
+  
+  To address this, we developed softHRD, a transcriptomics-based framework for detecting HRD in breast cancer. softHRD was trained on RNA-seq profiles from 857 breast cancer patients in The Cancer Genome Atlas (TCGA), filtered for protein-coding genes. A variational autoencoder was first used to reconstruct these transcriptomic profiles, generating latent representations that capture the underlying structure of gene expression patterns. A sparse autoencoder was then applied to these latent features to derive mechanistically interpretable components and identify an HRD-associated gene set. These genes were subsequently leveraged to train a downstream Elastic Net regression model, yielding a robust 111-gene transcriptional signature indicative of HRD. 
+  
+  We validated softHRD in 80 breast cancer patients from the I-SPY 2 clinical trial treated with neoadjuvant chemotherapy and olaparib. The model identified a statistically significant difference in pathologic complete response between HRD-predicted and HR-proficient tumors (p = 0.00676). Unlike whole-genome sequencing, which provides a static view of mutational alterations, transcriptomic profiling captures the dynamic state of gene expression, revealing biological changes that genomic methods may overlook.
 
-Executive Summary
-* HRD is highly correlated with Breast cancer
-* PARPi treatments provide the most precise treatment for BRCA deficient HRD patients
-* Current advances in Machine learning methods and the advent of Next Generation
-Sequencing allows for the ability of precise real time classification of HRD in breast
-cancer patients
-* The Goal of this project is to develop a machine learning approach to classify HRD in
-breast cancer patients while providing a clinically relevant transcriptional signature
-* In the future we hope to validate our model on many more clinical datasets to improve
-the utility of our signature
-* We also want to expand to a pan-cancer signature
+  softHRD demonstrated robust performance across all PAM50 breast cancer subtypes, highlighting its generalizability. With the growing integration of transcriptomics into clinical research and diagnostics, softHRD represents a scalable and adaptable framework for accurate, efficient HRD characterization, with potential applications across multiple cancer types.
+
+
+## Pipeline
+
