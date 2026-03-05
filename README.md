@@ -3,7 +3,7 @@
 ## Intro:
   The homologous recombination (HR) pathway is the canonical repair mechanism by which cells repair DNA double-strand breaks. Defects in this pathway, known as homologous recombination deficiency (HRD), can lead to genomic instability and are observed in approximately 13% of breast cancers. HRD is often driven by somatic or germline mutations in BRCA1/2, which render tumors sensitive to PARP inhibitors and platinum-based therapies through synthetic lethality. However, many HRD-positive cancers lack BRCA1/2 mutations, underscoring the need for more reliable approaches to identify tumors likely to benefit from these treatments.
 
-## ***softHRD model verview***
+## ***softHRD model overview***
 
   To address this, we developed softHRD, a transcriptomics-based framework for detecting HRD in breast cancer. softHRD was trained on RNA-seq profiles from 857 breast cancer patients in The Cancer Genome Atlas (TCGA), filtered for protein-coding genes. A variational autoencoder was first used to reconstruct these transcriptomic profiles, generating latent representations that capture the underlying structure of gene expression patterns. A sparse autoencoder was then applied to these latent features to derive mechanistically interpretable components and identify an HRD-associated gene set. These genes were subsequently leveraged to train a downstream Elastic Net regression model, yielding a robust 111-gene transcriptional signature indicative of HRD. 
 
